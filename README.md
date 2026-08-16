@@ -54,6 +54,12 @@ Or use the small helper:
 .\scripts\Start-TinyConnect.ps1
 ~~~
 
+The helper runs target\release\tinyconnect.exe directly when that release build
+exists, so Rust and Cargo are not required for ordinary use. If the executable
+is absent and Cargo is available, it falls back to cargo run --release. If
+neither is available, it reports the exact missing executable and the Rust build
+command needed to create it.
+
 The first run opens a terminal UI and waits for a Spotify client to select
 TinyConnect. The current Windows playback endpoint is shown in the UI.
 

@@ -13,7 +13,7 @@ use std::process::Command;
 
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, Event, KeyCode, KeyEvent},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -351,6 +351,10 @@ async fn handle_key(
     player_events: &mut Option<PlayerEventChannel>,
     current_route: &mut Option<OutputRoute>,
 ) -> bool {
+    if !is_actionable_key_event(&key) {
+        return false;
+    }
+
     match key.code {
         KeyCode::Char('q') | KeyCode::Char('Q') => true,
         KeyCode::Left => {
@@ -402,6 +406,10 @@ async fn handle_key(
         }
         _ => false,
     }
+}
+
+fn is_actionable_key_event(key: &KeyEvent) -> bool {
+    key.kind == KeyEventKind::Press
 }
 
 fn draw(frame: &mut Frame, ui: &UiState) {
@@ -649,4 +657,27 @@ async fn run_app() -> AppResult<()> {
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> AppResult<()> {
     run_app().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crossterm::event::KeyModifiers;
+
+    #[test]
+    fn controls_accept_only_initial_key_presses() {
+        let press =
+            KeyEvent::new_with_kind(KeyCode::Char(' '), KeyModifiers::NONE, KeyEventKind::Press);
+        let repeat =
+            KeyEvent::new_with_kind(KeyCode::Char(' '), KeyModifiers::NONE, KeyEventKind::Repeat);
+        let release = KeyEvent::new_with_kind(
+            KeyCode::Char(' '),
+            KeyModifiers::NONE,
+            KeyEventKind::Release,
+        );
+
+        assert!(is_actionable_key_event(&press));
+        assert!(!is_actionable_key_event(&repeat));
+        assert!(!is_actionable_key_event(&release));
+    }
 }

@@ -18,7 +18,7 @@ if (-not $Inner) {
             $shellPath = if ($PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' }
         }
 
-        & $wt.Source '--window' 'new' '--size' '108,27' 'new-tab' $shellPath '-NoLogo' '-NoProfile' '-ExecutionPolicy' 'Bypass' '-File' $PSCommandPath '-Inner' @Arguments
+        & $wt.Source '--window' 'new' '--size' '80,27' 'new-tab' $shellPath '-NoLogo' '-NoProfile' '-ExecutionPolicy' 'Bypass' '-File' $PSCommandPath '-Inner' @Arguments
         if ($LASTEXITCODE -eq 0) {
             exit 0
         }

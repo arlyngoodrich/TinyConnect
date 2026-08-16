@@ -377,7 +377,7 @@ fn draw(frame: &mut Frame, ui: &UiState) {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Min(3),
-            Constraint::Length(3),
+            Constraint::Length(4),
         ])
         .split(area);
 
@@ -449,7 +449,7 @@ fn draw(frame: &mut Frame, ui: &UiState) {
 
     let controls = Paragraph::new(vec![
         Line::from("[Left] Previous   [Space] Play/Pause   [Right] Next"),
-        Line::from("[Up] Volume +     [Down] Volume -        [Q] Quit"),
+        Line::from("[Up] Volume +     [Down] Volume -      [Q] Quit"),
     ])
     .block(Block::default().borders(Borders::ALL).title("Controls"))
     .wrap(Wrap { trim: true });

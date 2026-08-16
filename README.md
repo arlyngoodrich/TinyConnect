@@ -52,7 +52,7 @@ Or use the small helper:
 .\scripts\Start-TinyConnect.ps1
 ~~~
 
-The helper opens a new 108-column by 27-row Windows Terminal window when
+The helper opens a new 80-column by 27-row Windows Terminal window when
 wt.exe is available. TinyConnect runs inside that dedicated window and the
 window closes after Q. If Windows Terminal is unavailable, the helper runs in
 the current shell. In either case, it runs target\release\tinyconnect.exe

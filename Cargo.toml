@@ -1,0 +1,18 @@
+[package]
+name = "tinyconnect"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+description = "A tiny Windows terminal Spotify Connect controller powered by librespot."
+license = "MIT"
+repository = "https://github.com/arlyngoodrich/TinyConnect"
+readme = "README.md"
+keywords = ["spotify-connect", "librespot", "tui", "windows", "audio"]
+categories = ["multimedia::audio", "command-line-utilities"]
+
+[dependencies]
+crossterm = "0.28"
+futures-util = "0.3"
+librespot = { version = "0.8.0", default-features = false, features = ["native-tls", "rodio-backend", "with-libmdns"] }
+ratatui = "0.29"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "sync", "time"] }

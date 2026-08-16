@@ -1,0 +1,8 @@
+/target/
+*.exe
+*.pdb
+.env
+.env.*
+*.log
+.tinyconnect/
+.DS_Store

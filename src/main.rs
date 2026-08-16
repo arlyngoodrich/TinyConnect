@@ -8,9 +8,6 @@ use std::{
     time::Duration,
 };
 
-#[cfg(windows)]
-use std::process::Command;
-
 use crossterm::{
     cursor::{Hide, Show},
     event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
@@ -40,33 +37,9 @@ use ratatui::{
 };
 use tokio::{sync::mpsc, task::JoinHandle};
 
-const SPEAKER_NAME: &str = "Speaker (Realtek(R) Audio)";
-const HEADSET_NAME: &str = "Headset Earphone (CORSAIR HS55 WIRELESS Gaming Headset)";
 const DEVICE_NAME: &str = "TinyConnect";
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum OutputRoute {
-    Speakers,
-    Headset,
-}
-
-impl OutputRoute {
-    fn device_name(self) -> &'static str {
-        match self {
-            Self::Speakers => SPEAKER_NAME,
-            Self::Headset => HEADSET_NAME,
-        }
-    }
-
-    fn label(self) -> &'static str {
-        match self {
-            Self::Speakers => "speakers",
-            Self::Headset => "headset",
-        }
-    }
-}
 
 #[derive(Debug)]
 struct UiState {
@@ -90,7 +63,7 @@ impl Default for UiState {
             duration_ms: 0,
             playing: false,
             connection: "Advertising".to_owned(),
-            output: "Checking Windows output...".to_owned(),
+            output: "Windows default selected at startup".to_owned(),
             status: "No credentials or audio cache are stored".to_owned(),
             bars_phase: 0,
         }
@@ -216,7 +189,7 @@ async fn establish_connection(
     let player_events = player.get_player_event_channel();
 
     let (spirc, spirc_task) = Spirc::new(
-        ConnectConfig::default(),
+        tinyconnect_connect_config(),
         session.clone(),
         credentials,
         Arc::clone(&player),
@@ -300,57 +273,14 @@ fn artist_name(audio_item: &AudioItem) -> String {
     }
 }
 
-async fn switch_output(
-    route: OutputRoute,
-    ui: &mut UiState,
-    session_config: &SessionConfig,
-    credentials: &Option<Credentials>,
-    connected: &mut Option<Connection>,
-    player_events: &mut Option<PlayerEventChannel>,
-    current_route: &mut Option<OutputRoute>,
-) {
-    ui.status = format!("Switching to {}...", route.label());
-    match set_default_output(route.device_name()) {
-        Ok(selected) => {
-            ui.output = selected;
-            *current_route = Some(route);
-            player_events.take();
-            if let Some(connection) = connected.take() {
-                connection.shutdown().await;
-            }
-
-            if let Some(credentials) = credentials {
-                match establish_connection(credentials.clone(), session_config).await {
-                    Ok((connection, events)) => {
-                        *connected = Some(connection);
-                        *player_events = Some(events);
-                        ui.connection = "Connected".to_owned();
-                        ui.status = format!("Rebound to {}", route.label());
-                    }
-                    Err(error) => {
-                        ui.connection = "Disconnected".to_owned();
-                        ui.status = format!("Rebind failed: {error}");
-                    }
-                }
-            } else {
-                ui.status = format!("{} selected; waiting for Connect", route.label());
-            }
-        }
-        Err(error) => {
-            ui.status = format!("Audio switch failed: {error}");
-        }
+fn tinyconnect_connect_config() -> ConnectConfig {
+    ConnectConfig {
+        initial_volume: u16::MAX,
+        ..ConnectConfig::default()
     }
 }
 
-async fn handle_key(
-    key: KeyEvent,
-    ui: &mut UiState,
-    session_config: &SessionConfig,
-    credentials: &Option<Credentials>,
-    connected: &mut Option<Connection>,
-    player_events: &mut Option<PlayerEventChannel>,
-    current_route: &mut Option<OutputRoute>,
-) -> bool {
+fn handle_key(key: KeyEvent, ui: &mut UiState, connected: &mut Option<Connection>) -> bool {
     if !is_actionable_key_event(&key) {
         return false;
     }
@@ -376,32 +306,6 @@ async fn handle_key(
                 let _ = connection.spirc.next();
                 ui.status = "Next requested".to_owned();
             }
-            false
-        }
-        KeyCode::Char('h') | KeyCode::Char('H') => {
-            switch_output(
-                OutputRoute::Headset,
-                ui,
-                session_config,
-                credentials,
-                connected,
-                player_events,
-                current_route,
-            )
-            .await;
-            false
-        }
-        KeyCode::Char('s') | KeyCode::Char('S') => {
-            switch_output(
-                OutputRoute::Speakers,
-                ui,
-                session_config,
-                credentials,
-                connected,
-                player_events,
-                current_route,
-            )
-            .await;
             false
         }
         _ => false,
@@ -491,11 +395,9 @@ fn draw(frame: &mut Frame, ui: &UiState) {
     .wrap(Wrap { trim: true });
     frame.render_widget(status, chunks[4]);
 
-    let controls = Paragraph::new(
-        "Left previous   Space play/pause   Right next   H headset   S speakers   Q quit",
-    )
-    .block(Block::default().borders(Borders::ALL).title("Controls"))
-    .wrap(Wrap { trim: true });
+    let controls = Paragraph::new("Left previous   Space play/pause   Right next   Q quit")
+        .block(Block::default().borders(Borders::ALL).title("Controls"))
+        .wrap(Wrap { trim: true });
     frame.render_widget(controls, chunks[5]);
 }
 
@@ -511,74 +413,9 @@ fn format_time(milliseconds: u32) -> String {
     format!("{:02}:{:02}", seconds / 60, seconds % 60)
 }
 
-#[cfg(windows)]
-fn run_powershell(script: &str, target: Option<&str>) -> AppResult<String> {
-    let mut command = Command::new("powershell.exe");
-    command.args([
-        "-NoProfile",
-        "-NonInteractive",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        script,
-    ]);
-    if let Some(target) = target {
-        command.env("TINYCONNECT_AUDIO_NAME", target);
-    }
-
-    let output = command.output()?;
-    if !output.status.success() {
-        let message = String::from_utf8_lossy(&output.stderr).trim().to_owned();
-        return Err(io::Error::other(if message.is_empty() {
-            "PowerShell audio command failed".to_owned()
-        } else {
-            message
-        })
-        .into());
-    }
-
-    Ok(String::from_utf8_lossy(&output.stdout).trim().to_owned())
-}
-
-#[cfg(windows)]
-fn current_default_output() -> AppResult<String> {
-    run_powershell(
-        "$ErrorActionPreference = 'Stop'; Import-Module AudioDeviceCmdlets -ErrorAction Stop; (Get-AudioDevice -Playback).Name",
-        None,
-    )
-}
-
-#[cfg(windows)]
-fn set_default_output(name: &str) -> AppResult<String> {
-    let selected = run_powershell(
-        "$ErrorActionPreference = 'Stop'; Import-Module AudioDeviceCmdlets -ErrorAction Stop; $target = $env:TINYCONNECT_AUDIO_NAME; $device = Get-AudioDevice -List | Where-Object { $_.Type -eq 'Playback' -and $_.Name -eq $target } | Select-Object -First 1; if ($null -eq $device) { throw \"Playback endpoint not found: $target\" }; Set-AudioDevice -Index $device.Index | Out-Null; (Get-AudioDevice -Playback).Name",
-        Some(name),
-    )?;
-    if selected != name {
-        return Err(
-            io::Error::other(format!("Windows selected '{selected}' instead of '{name}'")).into(),
-        );
-    }
-    Ok(selected)
-}
-
-#[cfg(not(windows))]
-fn current_default_output() -> AppResult<String> {
-    Err(io::Error::other("TinyConnect audio routing requires Windows").into())
-}
-
-#[cfg(not(windows))]
-fn set_default_output(_name: &str) -> AppResult<String> {
-    Err(io::Error::other("TinyConnect audio routing requires Windows").into())
-}
-
 async fn run_app() -> AppResult<()> {
     let mut terminal = TerminalGuard::new()?;
-    let mut ui = UiState {
-        output: current_default_output()
-            .unwrap_or_else(|_| "Unavailable (AudioDeviceCmdlets required)".to_owned()),
-        ..UiState::default()
-    };
+    let mut ui = UiState::default();
     let (input_sender, mut input_receiver) = mpsc::unbounded_channel();
     let input = InputGuard::spawn(input_sender);
 
@@ -596,8 +433,6 @@ async fn run_app() -> AppResult<()> {
 
     let mut connected: Option<Connection> = None;
     let mut player_events: Option<PlayerEventChannel> = None;
-    let mut credentials: Option<Credentials> = None;
-    let mut current_route: Option<OutputRoute> = None;
     let mut tick = tokio::time::interval(Duration::from_millis(200));
     tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
 
@@ -608,15 +443,7 @@ async fn run_app() -> AppResult<()> {
                 ui.bars_phase = (ui.bars_phase + 1) % 8;
             }
             Some(key) = input_receiver.recv() => {
-                if handle_key(
-                    key,
-                    &mut ui,
-                    &session_config,
-                    &credentials,
-                    &mut connected,
-                    &mut player_events,
-                    &mut current_route,
-                ).await {
+                if handle_key(key, &mut ui, &mut connected) {
                     break;
                 }
             }
@@ -624,7 +451,6 @@ async fn run_app() -> AppResult<()> {
                 apply_player_event(&mut ui, event);
             }
             Some(new_credentials) = discovery.next() => {
-                credentials = Some(new_credentials.clone());
                 if connected.is_none() {
                     ui.status = "Connect selected; establishing session".to_owned();
                     match establish_connection(new_credentials, &session_config).await {
@@ -679,5 +505,13 @@ mod tests {
         assert!(is_actionable_key_event(&press));
         assert!(!is_actionable_key_event(&repeat));
         assert!(!is_actionable_key_event(&release));
+    }
+
+    #[test]
+    fn connect_starts_at_max_volume_with_remote_control_enabled() {
+        let config = tinyconnect_connect_config();
+
+        assert_eq!(config.initial_volume, u16::MAX);
+        assert!(!config.disable_volume);
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "tinyconnect"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 rust-version = "1.85"
 description = "A tiny Windows terminal Spotify Connect controller powered by librespot."
@@ -23,6 +23,7 @@ windows = { version = "0.54.0", features = [
     "Win32_Media_Audio",
     "Win32_Media_Audio_Endpoints",
     "Win32_System_Com",
+    "Win32_System_WindowsProgramming",
     "Win32_UI_Shell_PropertiesSystem",
 ] }
 

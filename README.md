@@ -12,15 +12,18 @@
   <img src="assets/demo/tinyconnect-demo.gif" alt="TinyConnect compact terminal demo" width="720">
 </p>
 
-TinyConnect v0.1.1 is a small Windows terminal controller for a local Spotify
+TinyConnect v0.1.2 is a small Windows terminal controller for a local Spotify
 Connect device powered directly by librespot
 (https://github.com/librespot-org/librespot). It displays the current track and
 controls the active player without using the Spotify Web API, client IDs, or an
 OAuth application of its own.
 
-TinyConnect advertises itself as TinyConnect on the local network. Select it
-from a Spotify client, then use the terminal controller to play, pause, skip,
-and adjust the Windows playback volume.
+TinyConnect automatically includes the local Windows computer name in its
+advertised device name, such as `TinyConnect (LIVINGROOM-PC)`. Multiple PCs can
+therefore run TinyConnect on the same LAN without sharing the same visible
+Connect name. Select the host you want from a Spotify client, then use the
+terminal controller to play, pause, skip, and adjust the Windows playback
+volume.
 
 ## Controls
 
@@ -42,7 +45,7 @@ TinyConnect to use the newly selected endpoint.
 ## Quick start
 
 For the normal user path, download
-`tinyconnect-v0.1.1-windows-x86_64.exe` from the [GitHub
+`tinyconnect-v0.1.2-windows-x86_64.exe` from the [GitHub
 Releases](https://github.com/arlyngoodrich/TinyConnect/releases) page and
 double-click it. Then open Spotify on an authenticated device and select
 TinyConnect under devices.

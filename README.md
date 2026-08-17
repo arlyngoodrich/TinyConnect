@@ -7,21 +7,25 @@ controls the active player without using the Spotify Web API, client IDs, or an
 OAuth application of its own.
 
 TinyConnect advertises itself as TinyConnect on the local network. Select it
-from a Spotify client, then use the terminal controller to play, pause, and
-skip.
+from a Spotify client, then use the terminal controller to play, pause, skip,
+and adjust the Windows playback volume.
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| Left arrow | Previous track (or restart the current track) |
+| Left | Previous track (or restart the current track) |
 | Space | Play/pause |
-| Right arrow | Next track |
+| Right | Next track |
+| Up | Increase Windows playback volume by approximately 5% |
+| Down | Decrease Windows playback volume by approximately 5% |
 | Q | Shut down cleanly |
 
-TinyConnect plays through the Windows default playback device selected when
-TinyConnect starts. To change outputs, quit TinyConnect, select another
-Windows default playback device, and start TinyConnect again.
+TinyConnect resolves the Windows default render endpoint when it starts and
+uses that same endpoint for its lifetime. The Runtime area displays the
+endpoint friendly name and current Windows master volume. If the Windows
+default output changes while TinyConnect is running, quit and restart
+TinyConnect to use the newly selected endpoint.
 
 ## Requirements
 
@@ -33,7 +37,8 @@ No credential, audio, or application cache is enabled by TinyConnect. The
 application does not include or use CLIAMP.
 TinyConnect starts the Spotify Connect volume at 100% while leaving remote
 Connect volume control enabled. Windows volume is the intended normal volume
-control.
+control; Up and Down change the Windows endpoint volume without changing the
+Spotify Connect volume.
 
 ## Run
 
@@ -47,16 +52,18 @@ Or use the small helper:
 .\scripts\Start-TinyConnect.ps1
 ~~~
 
-The helper runs target\release\tinyconnect.exe directly when that release build
-exists, so Rust and Cargo are not required for ordinary use. If the executable
-is absent and Cargo is available, it falls back to cargo run --release. If
-neither is available, it reports the exact missing executable and the Rust build
-command needed to create it.
+The helper opens a new 80-column by 27-row Windows Terminal window when
+wt.exe is available. TinyConnect runs inside that dedicated window and the
+window closes after Q. If Windows Terminal is unavailable, the helper runs in
+the current shell. In either case, it runs target\release\tinyconnect.exe
+directly when that release build exists, so Rust and Cargo are not required for
+ordinary use. If the executable is absent and Cargo is available, it falls back
+to cargo run --release. If neither is available, it reports the exact missing
+executable and the Rust build command needed to create it.
 
 The first run opens a terminal UI and waits for a Spotify client to select
-TinyConnect. The UI reports that it uses the Windows default playback device
-selected at startup. Use Q before closing the terminal window so librespot and
-the Connect advertisement can shut down cleanly.
+TinyConnect. Use Q before closing the terminal window so librespot and the
+Connect advertisement can shut down cleanly.
 
 ## Project boundaries and attribution
 

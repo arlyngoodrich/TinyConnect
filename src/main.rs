@@ -37,6 +37,12 @@ use ratatui::{
 };
 use tokio::{sync::mpsc, task::JoinHandle};
 
+#[cfg(windows)]
+mod windows_audio;
+
+#[cfg(windows)]
+use windows_audio::{AudioEndpoint, VOLUME_STEP_PERCENT};
+
 const DEVICE_NAME: &str = "TinyConnect";
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
@@ -50,6 +56,7 @@ struct UiState {
     playing: bool,
     connection: String,
     output: String,
+    volume_percent: u8,
     status: String,
     bars_phase: usize,
 }
@@ -63,9 +70,20 @@ impl Default for UiState {
             duration_ms: 0,
             playing: false,
             connection: "Advertising".to_owned(),
-            output: "Windows default selected at startup".to_owned(),
+            output: "Resolving Windows output...".to_owned(),
+            volume_percent: 0,
             status: "No credentials or audio cache are stored".to_owned(),
             bars_phase: 0,
+        }
+    }
+}
+
+impl UiState {
+    fn with_audio(output: String, volume_percent: u8) -> Self {
+        Self {
+            output,
+            volume_percent,
+            ..Self::default()
         }
     }
 }
@@ -166,6 +184,7 @@ impl Connection {
 async fn establish_connection(
     credentials: Credentials,
     session_config: &SessionConfig,
+    audio_device_name: &str,
 ) -> AppResult<(Connection, PlayerEventChannel)> {
     let session = Session::new(session_config.clone(), None);
     let sink_builder = audio_backend::find(Some("rodio".to_owned()))
@@ -180,11 +199,12 @@ async fn establish_connection(
         ..PlayerConfig::default()
     };
     let audio_format = AudioFormat::default();
+    let audio_device_name = audio_device_name.to_owned();
     let player = Player::new(
         player_config,
         session.clone(),
         mixer.get_soft_volume(),
-        move || sink_builder(None, audio_format),
+        move || sink_builder(Some(audio_device_name.clone()), audio_format),
     );
     let player_events = player.get_player_event_channel();
 
@@ -280,12 +300,18 @@ fn tinyconnect_connect_config() -> ConnectConfig {
     }
 }
 
-fn handle_key(key: KeyEvent, ui: &mut UiState, connected: &mut Option<Connection>) -> bool {
+fn handle_key(
+    key: KeyEvent,
+    ui: &mut UiState,
+    connected: &mut Option<Connection>,
+    audio_endpoint: &AudioEndpoint,
+) -> bool {
     if !is_actionable_key_event(&key) {
         return false;
     }
 
-    match key.code {
+    let code = key.code;
+    match code {
         KeyCode::Char('q') | KeyCode::Char('Q') => true,
         KeyCode::Left => {
             if let Some(connection) = connected.as_ref() {
@@ -308,12 +334,37 @@ fn handle_key(key: KeyEvent, ui: &mut UiState, connected: &mut Option<Connection
             }
             false
         }
+        KeyCode::Up | KeyCode::Down => {
+            let delta = volume_delta_for_key(code).expect("volume key must have a delta");
+            match audio_endpoint.adjust_volume(delta) {
+                Ok(volume_percent) => {
+                    ui.volume_percent = volume_percent;
+                    ui.status = if delta > 0 {
+                        "Windows volume increased".to_owned()
+                    } else {
+                        "Windows volume decreased".to_owned()
+                    };
+                }
+                Err(error) => {
+                    ui.status = format!("Windows volume change failed: {error}");
+                }
+            }
+            false
+        }
         _ => false,
     }
 }
 
 fn is_actionable_key_event(key: &KeyEvent) -> bool {
     key.kind == KeyEventKind::Press
+}
+
+fn volume_delta_for_key(code: KeyCode) -> Option<i8> {
+    match code {
+        KeyCode::Up => Some(VOLUME_STEP_PERCENT),
+        KeyCode::Down => Some(-VOLUME_STEP_PERCENT),
+        _ => None,
+    }
 }
 
 fn draw(frame: &mut Frame, ui: &UiState) {
@@ -326,7 +377,7 @@ fn draw(frame: &mut Frame, ui: &UiState) {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Min(3),
-            Constraint::Length(3),
+            Constraint::Length(4),
         ])
         .split(area);
 
@@ -389,15 +440,19 @@ fn draw(frame: &mut Frame, ui: &UiState) {
     let status = Paragraph::new(vec![
         Line::from(format!("Connection: {}", ui.connection)),
         Line::from(format!("Output: {}", ui.output)),
+        Line::from(format!("Volume: {}%", ui.volume_percent)),
         Line::from(format!("Status: {}", ui.status)),
     ])
     .block(Block::default().borders(Borders::ALL).title("Runtime"))
     .wrap(Wrap { trim: true });
     frame.render_widget(status, chunks[4]);
 
-    let controls = Paragraph::new("Left previous   Space play/pause   Right next   Q quit")
-        .block(Block::default().borders(Borders::ALL).title("Controls"))
-        .wrap(Wrap { trim: true });
+    let controls = Paragraph::new(vec![
+        Line::from("[Left] Previous   [Space] Play/Pause   [Right] Next"),
+        Line::from("[Up] Volume +     [Down] Volume -      [Q] Quit"),
+    ])
+    .block(Block::default().borders(Borders::ALL).title("Controls"))
+    .wrap(Wrap { trim: true });
     frame.render_widget(controls, chunks[5]);
 }
 
@@ -414,8 +469,9 @@ fn format_time(milliseconds: u32) -> String {
 }
 
 async fn run_app() -> AppResult<()> {
+    let (audio_endpoint, volume_percent) = AudioEndpoint::open_default()?;
     let mut terminal = TerminalGuard::new()?;
-    let mut ui = UiState::default();
+    let mut ui = UiState::with_audio(audio_endpoint.name().to_owned(), volume_percent);
     let (input_sender, mut input_receiver) = mpsc::unbounded_channel();
     let input = InputGuard::spawn(input_sender);
 
@@ -441,9 +497,12 @@ async fn run_app() -> AppResult<()> {
         tokio::select! {
             _ = tick.tick() => {
                 ui.bars_phase = (ui.bars_phase + 1) % 8;
+                if let Ok(volume_percent) = audio_endpoint.current_volume_percent() {
+                    ui.volume_percent = volume_percent;
+                }
             }
             Some(key) = input_receiver.recv() => {
-                if handle_key(key, &mut ui, &mut connected) {
+                if handle_key(key, &mut ui, &mut connected, &audio_endpoint) {
                     break;
                 }
             }
@@ -453,7 +512,13 @@ async fn run_app() -> AppResult<()> {
             Some(new_credentials) = discovery.next() => {
                 if connected.is_none() {
                     ui.status = "Connect selected; establishing session".to_owned();
-                    match establish_connection(new_credentials, &session_config).await {
+                    match establish_connection(
+                        new_credentials,
+                        &session_config,
+                        audio_endpoint.name(),
+                    )
+                    .await
+                    {
                         Ok((connection, events)) => {
                             connected = Some(connection);
                             player_events = Some(events);
@@ -513,5 +578,12 @@ mod tests {
 
         assert_eq!(config.initial_volume, u16::MAX);
         assert!(!config.disable_volume);
+    }
+
+    #[test]
+    fn volume_keys_map_to_single_five_percent_steps() {
+        assert_eq!(volume_delta_for_key(KeyCode::Up), Some(5));
+        assert_eq!(volume_delta_for_key(KeyCode::Down), Some(-5));
+        assert_eq!(volume_delta_for_key(KeyCode::Left), None);
     }
 }

@@ -3164,6 +3164,7 @@ dependencies = [
  "librespot",
  "ratatui",
  "tokio",
+ "windows 0.54.0",
 ]
 
 [[package]]

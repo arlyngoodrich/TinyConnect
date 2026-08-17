@@ -1,4 +1,5 @@
 use std::{
+    ffi::OsStr,
     io::{self, stdout},
     sync::{
         Arc,
@@ -7,6 +8,9 @@ use std::{
     thread::{self, JoinHandle as ThreadJoinHandle},
     time::Duration,
 };
+
+#[cfg(windows)]
+use std::{env, path::PathBuf, process::Command};
 
 use crossterm::{
     cursor::{Hide, Show},
@@ -44,6 +48,7 @@ mod windows_audio;
 use windows_audio::{AudioEndpoint, VOLUME_STEP_PERCENT};
 
 const DEVICE_NAME: &str = "TinyConnect";
+const INNER_LAUNCH_ARGUMENT: &str = "--inner";
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
@@ -367,6 +372,53 @@ fn volume_delta_for_key(code: KeyCode) -> Option<i8> {
     }
 }
 
+fn has_inner_launch_argument<I, S>(arguments: I) -> bool
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    arguments
+        .into_iter()
+        .any(|argument| argument.as_ref() == OsStr::new(INNER_LAUNCH_ARGUMENT))
+}
+
+#[cfg(windows)]
+fn executable_on_path(name: &str) -> Option<PathBuf> {
+    let path = env::var_os("PATH")?;
+    env::split_paths(&path)
+        .map(|directory| directory.join(name))
+        .find(|candidate| candidate.is_file())
+}
+
+#[cfg(windows)]
+fn launch_in_windows_terminal() -> AppResult<bool> {
+    if has_inner_launch_argument(env::args_os()) {
+        return Ok(false);
+    }
+
+    let Some(windows_terminal) = executable_on_path("wt.exe") else {
+        return Ok(false);
+    };
+
+    let executable = env::current_exe()?;
+    let executable = executable.canonicalize().unwrap_or(executable);
+    let status = Command::new(windows_terminal)
+        .args([
+            "--window",
+            "new",
+            "--size",
+            "80,27",
+            "new-tab",
+            "--title",
+            "TinyConnect",
+        ])
+        .arg(executable)
+        .arg(INNER_LAUNCH_ARGUMENT)
+        .status();
+
+    Ok(matches!(status, Ok(status) if status.success()))
+}
+
 fn draw(frame: &mut Frame, ui: &UiState) {
     let area = frame.area();
     let chunks = Layout::default()
@@ -547,6 +599,11 @@ async fn run_app() -> AppResult<()> {
 
 #[tokio::main(flavor = "multi_thread", worker_threads = 2)]
 async fn main() -> AppResult<()> {
+    #[cfg(windows)]
+    if launch_in_windows_terminal()? {
+        return Ok(());
+    }
+
     run_app().await
 }
 
@@ -554,6 +611,7 @@ async fn main() -> AppResult<()> {
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
+    use std::ffi::OsString;
 
     #[test]
     fn controls_accept_only_initial_key_presses() {
@@ -570,6 +628,21 @@ mod tests {
         assert!(is_actionable_key_event(&press));
         assert!(!is_actionable_key_event(&repeat));
         assert!(!is_actionable_key_event(&release));
+    }
+
+    #[test]
+    fn only_the_private_inner_marker_changes_launch_mode() {
+        assert!(!has_inner_launch_argument([OsString::from(
+            "tinyconnect.exe"
+        )]));
+        assert!(has_inner_launch_argument([
+            OsString::from("tinyconnect.exe"),
+            OsString::from(INNER_LAUNCH_ARGUMENT),
+        ]));
+        assert!(!has_inner_launch_argument([
+            OsString::from("tinyconnect.exe"),
+            OsString::from("--inner-mostly"),
+        ]));
     }
 
     #[test]

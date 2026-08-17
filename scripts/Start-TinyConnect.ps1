@@ -1,6 +1,5 @@
 [CmdletBinding()]
 param(
-    [switch] $Inner,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]] $Arguments
 )
@@ -9,21 +8,6 @@ $ErrorActionPreference = 'Stop'
 $scriptDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path
 $projectRoot = Split-Path -Parent $scriptDirectory
 $releaseExecutable = Join-Path $projectRoot 'target\release\tinyconnect.exe'
-
-if (-not $Inner) {
-    $wt = Get-Command wt.exe -ErrorAction SilentlyContinue
-    if ($null -ne $wt) {
-        $shellPath = (Get-Process -Id $PID).Path
-        if ([string]::IsNullOrWhiteSpace($shellPath)) {
-            $shellPath = if ($PSEdition -eq 'Core') { 'pwsh.exe' } else { 'powershell.exe' }
-        }
-
-        & $wt.Source '--window' 'new' '--size' '80,27' 'new-tab' $shellPath '-NoLogo' '-NoProfile' '-ExecutionPolicy' 'Bypass' '-File' $PSCommandPath '-Inner' @Arguments
-        if ($LASTEXITCODE -eq 0) {
-            exit 0
-        }
-    }
-}
 
 if (Test-Path -LiteralPath $releaseExecutable) {
     & $releaseExecutable @Arguments

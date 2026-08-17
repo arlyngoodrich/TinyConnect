@@ -12,7 +12,7 @@
   <img src="assets/demo/tinyconnect-demo.gif" alt="TinyConnect compact terminal demo" width="720">
 </p>
 
-TinyConnect v0.1.0 is a small Windows terminal controller for a local Spotify
+TinyConnect v0.1.1 is a small Windows terminal controller for a local Spotify
 Connect device powered directly by librespot
 (https://github.com/librespot-org/librespot). It displays the current track and
 controls the active player without using the Spotify Web API, client IDs, or an
@@ -39,28 +39,30 @@ endpoint friendly name and current Windows master volume. If the Windows
 default output changes while TinyConnect is running, quit and restart
 TinyConnect to use the newly selected endpoint.
 
-## Download the release
+## Quick start
 
-Download `TinyConnect-v0.1.0-windows-x86_64.zip` from the [GitHub
+For the normal user path, download
+`tinyconnect-v0.1.1-windows-x86_64.exe` from the [GitHub
 Releases](https://github.com/arlyngoodrich/TinyConnect/releases) page and
-extract it. The release package includes the Windows executable, launcher,
-license, README, and canonical TinyConnect assets. Rust and Cargo are not
-required to run the released executable.
+double-click it. Then open Spotify on an authenticated device and select
+TinyConnect under devices.
 
-From the extracted package:
+TinyConnect targets Windows 10/11 and requires Spotify Premium for Connect
+playback. Rust, Cargo, PowerShell, and a repository checkout are not required
+for release users. When Windows Terminal is available, the executable opens
+one dedicated 80-column by 27-row window; otherwise it runs in the current
+console. The executable carries the TinyConnect icon and is otherwise a normal
+console application.
 
-~~~powershell
-.\scripts\Start-TinyConnect.ps1
-~~~
+The release executable is unsigned, so Windows SmartScreen may warn that an
+uncommon download was blocked. No signing infrastructure is included in this
+release. The live dedicated window is hosted by Windows Terminal, so its
+taskbar identity may remain Windows Terminal rather than TinyConnect.
 
-The helper opens a new 80-column by 27-row Windows Terminal window when
-wt.exe is available. TinyConnect runs inside that dedicated window and the
-window closes after Q. If Windows Terminal is unavailable, the helper runs in
-the current shell. In either case, it runs target\release\tinyconnect.exe
-directly when that release build exists. If the executable is absent and Cargo
-is available, it falls back to cargo run --release. If neither is available,
-it reports the exact missing executable and the Rust build command needed to
-create it.
+The repository helper at `scripts/Start-TinyConnect.ps1` remains available for
+development and backward compatibility. It locates a release build first and
+otherwise falls back to `cargo run --release`; it is not needed for the
+released executable.
 
 ## Build from source
 
@@ -81,9 +83,9 @@ Spotify Connect volume.
 cargo run --release
 ~~~
 
-The first run opens a terminal UI and waits for a Spotify client to select
-TinyConnect. Use Q before closing the terminal window so librespot and the
-Connect advertisement can shut down cleanly.
+The first run opens the same terminal UI and waits for a Spotify client to
+select TinyConnect. Use Q before closing the terminal window so librespot and
+the Connect advertisement can shut down cleanly.
 
 ## Project boundaries and attribution
 

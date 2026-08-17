@@ -47,13 +47,14 @@ mod windows_audio;
 #[cfg(windows)]
 use windows_audio::{AudioEndpoint, VOLUME_STEP_PERCENT};
 
-const DEVICE_NAME: &str = "TinyConnect";
+const DEVICE_NAME_PREFIX: &str = "TinyConnect";
 const INNER_LAUNCH_ARGUMENT: &str = "--inner";
 
 type AppResult<T> = Result<T, Box<dyn std::error::Error + Send + Sync>>;
 
 #[derive(Debug)]
 struct UiState {
+    device_name: String,
     track: String,
     artist: String,
     position_ms: u32,
@@ -69,6 +70,7 @@ struct UiState {
 impl Default for UiState {
     fn default() -> Self {
         Self {
+            device_name: DEVICE_NAME_PREFIX.to_owned(),
             track: "Waiting for a Spotify Connect selection".to_owned(),
             artist: "Select TinyConnect from a Spotify client".to_owned(),
             position_ms: 0,
@@ -84,8 +86,9 @@ impl Default for UiState {
 }
 
 impl UiState {
-    fn with_audio(output: String, volume_percent: u8) -> Self {
+    fn with_audio(device_name: String, output: String, volume_percent: u8) -> Self {
         Self {
+            device_name,
             output,
             volume_percent,
             ..Self::default()
@@ -298,6 +301,41 @@ fn artist_name(audio_item: &AudioItem) -> String {
     }
 }
 
+fn advertised_device_name(computer_name: Option<&str>) -> String {
+    match computer_name.map(str::trim).filter(|name| !name.is_empty()) {
+        Some(name) if !name.eq_ignore_ascii_case(DEVICE_NAME_PREFIX) => {
+            format!("{DEVICE_NAME_PREFIX} ({name})")
+        }
+        _ => DEVICE_NAME_PREFIX.to_owned(),
+    }
+}
+
+#[cfg(windows)]
+fn resolved_computer_name() -> Option<String> {
+    use windows::{Win32::System::WindowsProgramming::GetComputerNameW, core::PWSTR};
+
+    let mut buffer = [0u16; 256];
+    let mut length = buffer.len() as u32;
+    unsafe { GetComputerNameW(PWSTR(buffer.as_mut_ptr()), &mut length).ok()? };
+    let length = usize::try_from(length).ok()?;
+    if length == 0 || length > buffer.len() {
+        return None;
+    }
+
+    let name = String::from_utf16(&buffer[..length]).ok()?;
+    let name = name.trim();
+    (!name.is_empty()).then(|| name.to_owned())
+}
+
+#[cfg(not(windows))]
+fn resolved_computer_name() -> Option<String> {
+    None
+}
+
+fn runtime_device_name() -> String {
+    advertised_device_name(resolved_computer_name().as_deref())
+}
+
 fn tinyconnect_connect_config() -> ConnectConfig {
     ConnectConfig {
         initial_volume: u16::MAX,
@@ -435,7 +473,7 @@ fn draw(frame: &mut Frame, ui: &UiState) {
 
     let title = Paragraph::new(Line::from(vec![
         Span::styled(
-            " TinyConnect ",
+            format!(" {} ", ui.device_name),
             Style::default()
                 .fg(Color::Cyan)
                 .add_modifier(Modifier::BOLD),
@@ -522,8 +560,13 @@ fn format_time(milliseconds: u32) -> String {
 
 async fn run_app() -> AppResult<()> {
     let (audio_endpoint, volume_percent) = AudioEndpoint::open_default()?;
+    let device_name = runtime_device_name();
     let mut terminal = TerminalGuard::new()?;
-    let mut ui = UiState::with_audio(audio_endpoint.name().to_owned(), volume_percent);
+    let mut ui = UiState::with_audio(
+        device_name.clone(),
+        audio_endpoint.name().to_owned(),
+        volume_percent,
+    );
     let (input_sender, mut input_receiver) = mpsc::unbounded_channel();
     let input = InputGuard::spawn(input_sender);
 
@@ -533,7 +576,7 @@ async fn run_app() -> AppResult<()> {
         session_config.device_id.clone(),
         session_config.client_id.clone(),
     )
-    .name(DEVICE_NAME)
+    .name(device_name)
     .device_type(DeviceType::Speaker)
     .port(0)
     .zeroconf_backend(zeroconf_backend)
@@ -628,6 +671,25 @@ mod tests {
         assert!(is_actionable_key_event(&press));
         assert!(!is_actionable_key_event(&repeat));
         assert!(!is_actionable_key_event(&release));
+    }
+
+    #[test]
+    fn advertised_name_uses_the_host_without_duplicate_product_prefix() {
+        let name = advertised_device_name(Some("HOST-A"));
+
+        assert_eq!(name, "TinyConnect (HOST-A)");
+        assert_eq!(name.matches(DEVICE_NAME_PREFIX).count(), 1);
+    }
+
+    #[test]
+    fn advertised_name_falls_back_for_missing_or_product_only_host_names() {
+        assert_eq!(advertised_device_name(None), DEVICE_NAME_PREFIX);
+        assert_eq!(advertised_device_name(Some("")), DEVICE_NAME_PREFIX);
+        assert_eq!(advertised_device_name(Some("  ")), DEVICE_NAME_PREFIX);
+        assert_eq!(
+            advertised_device_name(Some(" TinyConnect ")),
+            DEVICE_NAME_PREFIX
+        );
     }
 
     #[test]

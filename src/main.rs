@@ -14,7 +14,7 @@ use std::{env, path::PathBuf, process::Command};
 
 use crossterm::{
     cursor::{Hide, Show},
-    event::{self, Event, KeyCode, KeyEvent, KeyEventKind},
+    event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
@@ -343,6 +343,14 @@ fn tinyconnect_connect_config() -> ConnectConfig {
     }
 }
 
+fn is_quit_key(key: &KeyEvent) -> bool {
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Char('Q') => true,
+        KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => true,
+        _ => false,
+    }
+}
+
 fn handle_key(
     key: KeyEvent,
     ui: &mut UiState,
@@ -353,9 +361,12 @@ fn handle_key(
         return false;
     }
 
+    if is_quit_key(&key) {
+        return true;
+    }
+
     let code = key.code;
     match code {
-        KeyCode::Char('q') | KeyCode::Char('Q') => true,
         KeyCode::Left => {
             if let Some(connection) = connected.as_ref() {
                 let _ = connection.spirc.prev();
@@ -713,6 +724,22 @@ mod tests {
 
         assert_eq!(config.initial_volume, u16::MAX);
         assert!(!config.disable_volume);
+    }
+
+    #[test]
+    fn ctrl_c_quits_cleanly() {
+        let ctrl_c = KeyEvent::new_with_kind(
+            KeyCode::Char('c'),
+            KeyModifiers::CONTROL,
+            KeyEventKind::Press,
+        );
+        assert!(is_actionable_key_event(&ctrl_c));
+        assert!(is_quit_key(&ctrl_c));
+
+        let plain_c =
+            KeyEvent::new_with_kind(KeyCode::Char('c'), KeyModifiers::NONE, KeyEventKind::Press);
+        assert!(is_actionable_key_event(&plain_c));
+        assert!(!is_quit_key(&plain_c));
     }
 
     #[test]

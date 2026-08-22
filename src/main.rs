@@ -726,7 +726,6 @@ mod tests {
         assert!(!config.disable_volume);
     }
 
-
     #[test]
     fn ctrl_c_quits_cleanly() {
         let ctrl_c = KeyEvent::new_with_kind(
@@ -737,14 +736,12 @@ mod tests {
         assert!(is_actionable_key_event(&ctrl_c));
         assert!(is_quit_key(&ctrl_c));
 
-        let plain_c = KeyEvent::new_with_kind(
-            KeyCode::Char('c'),
-            KeyModifiers::NONE,
-            KeyEventKind::Press,
-        );
+        let plain_c =
+            KeyEvent::new_with_kind(KeyCode::Char('c'), KeyModifiers::NONE, KeyEventKind::Press);
         assert!(is_actionable_key_event(&plain_c));
         assert!(!is_quit_key(&plain_c));
     }
+
     #[test]
     fn volume_keys_map_to_single_five_percent_steps() {
         assert_eq!(volume_delta_for_key(KeyCode::Up), Some(5));
